@@ -6,7 +6,7 @@ daily foreign exchange data, with an Excel performance dashboard.
 ## Status
 Completed data download, inspection, cleaning, return calculation, baseline
 signal generation, a transparent baseline backtest, performance evaluation,
-and aligned benchmark comparisons.
+aligned benchmark comparisons, and policy-rate data preparation.
 The dataset contains
 2,816 ECB daily EUR/USD reference
 observations (USD per EUR), from 2015-01-02 through 2025-12-31, with 2,815
@@ -195,6 +195,85 @@ parameters are tuned. All portfolios use the same reference observations and
 daily exposure conventions; financing/carry, cash interest, and daily resizing
 costs remain excluded. ECB reference rates are assumed execution proxies,
 not guaranteed fills, so this is not fully tradable FX performance.
+
+## Policy-rate data preparation
+
+This stage collects and aligns policy-rate inputs only. It does not create
+macroeconomic trading signals or calculate their performance.
+
+Official FRED metadata identifies all three series as **Percent**, **Not
+Seasonally Adjusted**, with **Daily, 7-Day** frequency:
+
+| FRED series | Definition | Original source | Aligned value column |
+|---|---|---|---|
+| [ECBDFR](https://fred.stlouisfed.org/series/ECBDFR) | ECB Deposit Facility Rate for Euro Area | European Central Bank; Key ECB Interest Rates | `ecb_deposit_pct` |
+| [DFEDTARL](https://fred.stlouisfed.org/series/DFEDTARL) | Federal Funds Target Range, Lower Limit | Board of Governors; FOMC Press Release | `fed_lower_pct` |
+| [DFEDTARU](https://fred.stlouisfed.org/series/DFEDTARU) | Federal Funds Target Range, Upper Limit | Board of Governors; FOMC Press Release | `fed_upper_pct` |
+
+Run from the project root using the existing environment:
+
+```sh
+.venv/bin/python src/download_policy_rates.py
+.venv/bin/python src/align_policy_rates.py
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+The downloader requests **2014-01-01 through 2025-12-31**, providing pre-FX
+history, via FRED's `https://fred.stlouisfed.org/graph/fredgraph.csv` facility
+with `id`, `cosd`, and `coed` parameters. Each run archives original response
+bytes in a new timestamped `data/raw/policy_rates/<UTC timestamp>/` directory.
+Its `metadata.json` records series IDs, official metadata URLs, request and
+response URLs, units, frequency, requested and actual periods, HTTP status,
+UTC retrieval times, SHA-256 hashes, and missing-value/absent-date reports.
+No previous raw download is replaced. HTTP or validation failures preserve any
+received body and a failed manifest; they do not become successful datasets.
+
+The alignment command uses the latest download attempt and rejects it if failed
+or incomplete, rather than silently using an older download. To select an
+existing successful archive explicitly, supply
+`--manifest data/raw/policy_rates/<UTC timestamp>/metadata.json`. Raw hashes and
+requested endpoint coverage are rechecked before processing. Dates and numbers
+are parsed strictly; duplicate or invalid dates and infinite rates are rejected.
+Negative policy rates are valid. Missing source values and absent calendar rows
+are reported explicitly in metadata; missing rates are skipped during matching.
+
+Each series is aligned **separately**, using a backward as-of join from the FX
+date to **source observation date + one calendar day** as its **ASSUMED
+availability date**. This is a modeling lag, not a verified historical
+publication timestamp. No future backfill or interpolation is used. Matched
+availability must be on or before the FX date. Source age is measured from
+the source observation date, and values older than **seven calendar days** or
+unmatched FX dates cause failure. A prior valid value may bridge a missing
+source value only within this age limit.
+
+Fed lower bounds are checked against upper bounds on common source dates and
+again after separate alignment. Derived quantities are:
+
+- `fed_midpoint_pct = (fed_lower_pct + fed_upper_pct) / 2`, a percent level.
+- `rate_differential_pp = ecb_deposit_pct - fed_midpoint_pct`, a difference in
+  percentage points. Neither quantity is a decimal investment return.
+
+Outputs are ignored `data/processed/policy_rates_aligned.csv` and
+`policy_rates_metadata.json`. The CSV preserves the FX input columns and all
+2,816 original dates in order, adding rate values, the derived quantities,
+and each series' matched source date, assumed availability date, and age.
+Processed metadata includes original provenance, input/output hashes, missing
+reports, maximum source ages, and timing assumptions. Existing FX, baseline,
+and benchmark artifacts are preserved.
+
+The verified download contains **4,383 observations per series**, from
+2014-01-01 through 2025-12-31, with **zero missing values** and **zero absent
+calendar dates**. The aligned output has **2,816 rows**, and maximum source
+age is **one day for each series**. For example, the downloaded Fed range on
+source date 2015-12-16 is 0.25–0.50%; under the assumed lag it first appears
+on FX date 2015-12-17. FX date 2015-12-16 still uses the previous source day's
+0.00–0.25% range.
+
+Downloaded history reflects the **current vintage at retrieval**, not a
+historical real-time vintage. A one-day lag does not establish historically
+correct publication availability or eliminate revision risk. This remains
+retrospective research. Downloader unit tests mock HTTP responses and are
+separate from actual FRED download and full-dataset alignment verification.
 
 ## Planned Features
 - Extend the baseline trading signal with a macroeconomic input.
