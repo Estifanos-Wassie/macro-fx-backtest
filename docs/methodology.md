@@ -377,4 +377,3 @@ and daily resizing costs remain excluded; ECB reference rates are assumed
 execution proxies rather than guaranteed fills. Current-vintage policy data,
 modeled availability, and revision risk remain limitations. These results do
 not establish fully tradable FX performance.
-
