@@ -7,7 +7,7 @@ daily foreign exchange data, with an Excel performance dashboard.
 Completed data download, inspection, cleaning, return calculation, baseline
 signal generation, a transparent baseline backtest, performance evaluation,
 aligned benchmark comparisons, policy-rate data preparation, and a standalone
-macro signal, and a four-portfolio common-window comparison.
+macro signal, a four-portfolio common-window comparison, and bounded robustness checks.
 The dataset contains
 2,816 ECB daily EUR/USD reference
 observations (USD per EUR), from 2015-01-02 through 2025-12-31, with 2,815
@@ -418,6 +418,46 @@ and daily resizing costs remain excluded; ECB reference rates are assumed
 execution proxies rather than guaranteed fills. Current-vintage policy data,
 modeled availability, and revision risk remain limitations. These results do
 not establish fully tradable FX performance.
+
+## Bounded robustness checks
+
+Run `.venv/bin/python src/analyze_robustness.py` after the common-window
+comparison. Run all tests with `.venv/bin/python -m unittest discover -s tests -v`.
+The analysis reuses the existing held-position simulation and evaluation
+functions without changing signal rules or earlier outputs.
+
+The fixed cost scenarios are **0, 1, 5, and 10 bp one-way**, with identical
+positions and the original two-observation delay/window. The **1-bp case
+reproduces the saved common-window results**. Increasing costs reduces or leaves
+unchanged final equity. Moving-average total returns range from -4.88% to
+-14.96%; macro returns range from -23.73% to -27.74% across these costs.
+
+The fixed execution shifts are **2, 3, and 5 FX observations**, at 1 bp one-way.
+Each shift is applied once to full-history signals, keeping the modeled
+policy-data availability lag intact. All delays use a shared shorter window:
+initial cash valuation **2015-04-09 (index 67)**, first evaluated return
+**2015-04-10 (index 68)**, final observation **2025-12-31**, and **2,748 returns**.
+This differs from the cost/annual analysis window of 2015-04-02 initial
+valuation, 2015-04-07 first return, and 2,751 returns. Each portfolio resets to
+$10,000 cash, including fresh entry and final-liquidation costs where applicable.
+
+Calendar-year returns compound the original saved 1-bp/two-observation net
+returns, preserving actual costs and flat periods without annual trade resets.
+**2015 is partial**. Compounding annual returns reconciles with each original
+common-window total return.
+
+See [the complete cost, delay, and annual-return tables](docs/robustness.md)
+for every scenario, definitions, windows, counts, and limitations. Generated
+`robustness_*.csv` tables and `robustness_metadata.json` are ignored under
+`data/processed/`; metadata records scenario assumptions, reconciliation checks,
+and verified hashes of preserved artifacts.
+
+Neither strategy's total return changes sign across the specified cost or
+delay scenarios: both remain negative. These are retrospective sensitivity
+checks, not parameter optimization, a preferred-rule selection, or a holdout
+evaluation. No signal was reversed and no additional lookbacks were searched.
+Existing financing, execution-proxy, daily-resizing-cost, policy-vintage and
+publication-timing limitations remain in force.
 
 ## Planned Features
 - Create an Excel dashboard showing equity, drawdown, and signal performance.
