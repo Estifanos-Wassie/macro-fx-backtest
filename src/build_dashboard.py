@@ -258,7 +258,12 @@ def build_workbook(snapshot, output):
             dashboard.insert_chart(anchor, chart)
         note(dashboard, 54, "Reporting snapshot, not an interactive strategy simulator. To change assumptions, rerun the Python pipeline and rebuild. See Methodology for limitations and input hashes.")
         dashboard.print_area("A1:L56")
-        dashboard.fit_to_pages(1, 2)
+        # Fit-to-page scaling can override manual breaks. Reserve two readable
+        # A3 landscape pages, with the break before the second chart.
+        dashboard.set_paper(8)  # A3 accommodates the wide on-screen report.
+        dashboard.set_margins(0.4, 0.4, 0.4, 0.4)
+        dashboard.set_print_scale(85)
+        dashboard.set_h_pagebreaks([35])
 
         signals = sheets["Signals"]
         title(signals, "Signals | held-position audit & conditional summaries", 20)

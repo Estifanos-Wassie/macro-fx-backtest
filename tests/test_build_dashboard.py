@@ -156,6 +156,28 @@ class WorkbookTests(unittest.TestCase):
                 values = [float(point.find("c:v", NS).text) for point in cache.findall("c:pt", NS)]
                 np.testing.assert_allclose(values, curves[f"{name}_{field}"], rtol=0, atol=1e-10)
 
+    def test_dashboard_print_pages_keep_charts_whole(self):
+        sheet = self.sheets[0]
+        setup = sheet.find("s:pageSetup", NS)
+        self.assertEqual(setup.get("orientation"), "landscape")
+        self.assertEqual(setup.get("paperSize"), "8")  # A3, readable wide dashboard.
+        scale = int(setup.get("scale")) / 100
+        self.assertNotIn("fitToWidth", setup.attrib)
+        self.assertEqual([int(b.get("id")) for b in sheet.findall("s:rowBreaks/s:brk", NS)], [35])
+        page = sheet.find("s:sheetPr/s:pageSetUpPr", NS)
+        self.assertTrue(page is None or page.get("fitToPage") in (None, "0"))
+        drawing_ns = {"d": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"}
+        drawing = ET.fromstring(self.zip.read("xl/drawings/drawing1.xml"))
+        for anchor in drawing.findall("d:twoCellAnchor", drawing_ns):
+            first = int(anchor.find("d:from/d:row", drawing_ns).text)
+            last = int(anchor.find("d:to/d:row", drawing_ns).text)
+            self.assertFalse(first < 35 <= last, "A chart straddles the manual page break")
+        rows = {int(r.get("r")) - 1: float(r.get("ht", "21")) for r in sheet.findall("s:sheetData/s:row", NS)}
+        margins = sheet.find("s:pageMargins", NS)
+        printable_height = (11.7 - float(margins.get("top")) - float(margins.get("bottom"))) * 72
+        for start, end in ((0, 35), (35, 56)):
+            self.assertLess(sum(rows.get(i, 21) for i in range(start, end)) * scale, printable_height)
+
     def test_signal_summaries_provenance_and_scenario_tables(self):
         curves = self.snapshot["curves"]
         styles = ET.fromstring(self.zip.read("xl/styles.xml"))
