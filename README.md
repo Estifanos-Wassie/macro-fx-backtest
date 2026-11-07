@@ -6,7 +6,8 @@ daily foreign exchange data, with an Excel performance dashboard.
 ## Status
 Completed data download, inspection, cleaning, return calculation, baseline
 signal generation, a transparent baseline backtest, performance evaluation,
-aligned benchmark comparisons, and policy-rate data preparation.
+aligned benchmark comparisons, policy-rate data preparation, and a standalone
+macro signal (without macro performance evaluation).
 The dataset contains
 2,816 ECB daily EUR/USD reference
 observations (USD per EUR), from 2015-01-02 through 2025-12-31, with 2,815
@@ -275,8 +276,64 @@ correct publication availability or eliminate revision risk. This remains
 retrospective research. Downloader unit tests mock HTTP responses and are
 separate from actual FRED download and full-dataset alignment verification.
 
+## Standalone macro signal
+
+`src/generate_macro_signals.py` exposes `validate_aligned_data` and
+`generate_macro_signals` plus a runnable entry point:
+
+```sh
+.venv/bin/python src/generate_macro_signals.py
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+It reads the existing `data/processed/policy_rates_aligned.csv` and writes
+ignored `data/processed/macro_signals.csv`, preserving all 2,816 dates, input
+values, and per-series source-date, assumed-availability, and source-age audit
+columns. No policy data are downloaded again or realigned. Validation checks
+unique chronological FX dates, finite rates, Fed bound ordering, midpoint and
+differential arithmetic, and the original one-calendar-day assumed availability
+lag with source ages of at most seven days. Availability must not exceed the
+corresponding FX date.
+
+The fixed rule was chosen before evaluating the signal:
+
+- `d_t = ecb_deposit_pct_t - fed_midpoint_pct_t`, in percentage points.
+- `macro_change_pp_t = d_t - d_(t-63)`, an absolute difference in percentage
+  points over **63 FX observations**, not 63 calendar days.
+- `macro_signal = +1` for changes greater than `1e-10`, `-1` for changes below
+  `-1e-10`, and `0` otherwise or when history is insufficient.
+
+Absolute changes **at or below 1e-10 percentage points** are numerical zero,
+with **no relative tolerance**. This is floating-point handling, not an
+economic threshold. The change column retains its unrounded difference.
+There is no percentage-change calculation on policy rates or differentials.
+The lookback of 63 observations is a fixed, roughly quarterly research horizon;
+neither it nor the tolerance is optimized.
+
+The hypothesis is that a rise in the ECB-minus-Fed policy differential may
+support EUR appreciation, while a fall may support depreciation. A negative
+differential becoming less negative therefore gives a positive signal. This
+is an untested directional hypothesis, **not carry income**: no interest
+accrual, financing, currency returns, or macro performance is calculated here.
+
+The first 63 changes (indices 0–62) remain missing with zero signals. Index 63
+is the first eligible change because it compares index 63 with index 0. In the
+current dataset this is **2015-04-01**: `-0.325 - (-0.325) = 0` percentage
+points, so the first eligible signal is neutral. Counts are **999 negative,
+552 positive, and 1,265 zero**; zeros comprise **63 warm-up observations** and
+**1,202 eligible flat observations**.
+
+This output is a **signal, not a held position**. It uses only the already
+backward-aligned values with their modeled availability lag intact. The signal
+on FX row t is formed after observation t. This script applies no execution
+delay; a later backtest will apply the existing two-observation delay once,
+executing at t+1 and first earning the return ending at t+2. Macro performance
+has not been evaluated. Current-vintage policy history, assumed publication
+availability, and revision risk remain limitations. This is retrospective
+research, not out-of-sample research or evidence of tradable profitability.
+
 ## Planned Features
-- Extend the baseline trading signal with a macroeconomic input.
+- Backtest the standalone macro signal using the existing execution and cost model.
 - Create an Excel dashboard showing equity, drawdown, and signal performance.
 
 ## Tools
