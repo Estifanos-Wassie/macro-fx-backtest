@@ -4,6 +4,7 @@ from datetime import datetime
 from hashlib import sha256
 import json
 from pathlib import Path
+from textwrap import wrap
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,8 @@ PORTFOLIOS = ("baseline", "macro", "long_eur", "flat_reference")
 LABELS = dict(zip(PORTFOLIOS, ("Moving-average baseline", "Policy differential change",
                               "Constant long EUR exposure", "Flat zero-interest reference")))
 COLORS = dict(zip(PORTFOLIOS, ("#183153", "#008C95", "#6B70A0", "#A1ABB4")))
+CHART_LABELS = dict(zip(PORTFOLIOS, ("Moving average", "Policy differential",
+                                    "Long EUR exposure", "Flat reference")))
 CSV_FILES = ("common_window_comparison", "common_window_curves", "baseline_signals", "macro_signals",
              "robustness_cost_sensitivity", "robustness_delay_sensitivity", "robustness_annual_returns")
 JSON_FILES = ("common_window_metadata", "robustness_metadata", "policy_rates_metadata")
@@ -104,6 +107,7 @@ def build_workbook(snapshot, output):
             "header": fmt(bold=True, font_color="white", bg_color="#183153", text_wrap=True),
             "text": fmt(text_wrap=True), "note": fmt(font_size=10, text_wrap=True, font_color="#596B7D"),
             "percent": fmt(num_format='0.00%;[Red](0.00%);0.00%'),
+            "mean_percent": fmt(num_format='0.0000%;[Red](0.0000%);0.0000%'),
             "number": fmt(num_format='0.000;[Red](0.000);0.000'),
             "currency": fmt(num_format='$#,##0.00;[Red]($#,##0.00)'),
             "date": fmt(num_format="yyyy-mm-dd"), "integer": fmt(num_format="0"),
@@ -142,7 +146,7 @@ def build_workbook(snapshot, output):
             sheet.set_row(row, 44)
 
         method = sheets["Methodology"]
-        title(method, "Methodology & snapshot provenance", 9)
+        title(method, "Methodology & snapshot provenance", 3)
         method.set_column("A:A", 39)
         method.set_column("B:B", 28)
         method.set_column("C:J", 15)
@@ -238,13 +242,17 @@ def build_workbook(snapshot, output):
                                                     ("drawdown", "A36", "Common-window drawdown | from running peak", True)):
             chart = book.add_chart({"type": "line"})
             for name in PORTFOLIOS:
-                chart.add_series({"name": LABELS[name], "categories": ["Performance", PERFORMANCE_START, 0, PERFORMANCE_START + len(curves)-1, 0],
+                chart.add_series({"name": CHART_LABELS[name], "categories": ["Performance", PERFORMANCE_START, 0, PERFORMANCE_START + len(curves)-1, 0],
                                   "values": ["Performance", PERFORMANCE_START, locations[name][field], PERFORMANCE_START + len(curves)-1, locations[name][field]],
                                   "line": {"color": COLORS[name], "width": 1.6}})
             chart.set_title({"name": chart_title, "name_font": {"size": 14, "color": "#183153"}})
-            chart.set_x_axis({"date_axis": True, "num_format": "yyyy", "major_unit": 2, "major_unit_type": "years"})
+            chart.set_x_axis({"date_axis": True, "num_format": "yyyy", "num_format_linked": False,
+                              "major_unit": 1, "major_unit_type": "years", "label_position": "low",
+                              "num_font": {"size": 11, "rotation": 0}})
             chart.set_y_axis({"num_format": "0%" if percent else "$#,##0", "major_gridlines": {"visible": True, "line": {"color": "#E7EBEF"}}})
-            chart.set_legend({"position": "bottom", "font": {"size": 10}})
+            # Reserve room below the plot for annual labels and a concise legend.
+            chart.set_plotarea({"layout": {"x": 0.09, "y": 0.14, "width": 0.85, "height": 0.62}})
+            chart.set_legend({"position": "bottom", "font": {"size": 11}})
             chart.set_chartarea({"border": {"none": True}})
             chart.set_size({"width": 1080, "height": 350})
             dashboard.insert_chart(anchor, chart)
@@ -298,7 +306,7 @@ def build_workbook(snapshot, output):
                 value(signals, row, 1, position, "integer")
                 signals.write_formula(row, 2, f"=COUNTIF({pos_range},B{row+1})", formats["integer"], count)
                 signals.write_formula(row, 3, f'=IF(C{row+1}=0,"N/A — no intervals",AVERAGEIF({pos_range},B{row+1},{net_range}))',
-                                      formats["percent"], "N/A — no intervals" if not count else mean)
+                                      formats["mean_percent"], "N/A — no intervals" if not count else mean)
                 signals.set_row(row, 33)
             diagnostic = common["diagnostics"][name]
             for col, label in enumerate(("Strategy", "Exposure fraction", "Position changes", "Turnover incl. close"), start=7):
@@ -355,19 +363,20 @@ def build_workbook(snapshot, output):
         ]
         row = 16
         for heading, text in sections:
-            method.merge_range(row, 0, row, 9, heading, formats["section"])
-            method.merge_range(row + 1, 0, row + 1, 9, text, formats["text"])
-            method.set_row(row + 1, 70 if len(text) > 450 else 55)
+            method.merge_range(row, 0, row, 3, heading, formats["section"])
+            method.merge_range(row + 1, 0, row + 1, 3, text, formats["text"])
+            # Merged cells do not auto-fit; budget wrapped lines at the narrower width.
+            method.set_row(row + 1, max(60, (len(wrap(text, width=85)) + 1) * 15))
             row += 3
-        method.merge_range(row, 0, row, 9, "Input artifact SHA-256 | immutable build provenance", formats["section"])
+        method.merge_range(row, 0, row, 3, "Input artifact SHA-256 | immutable build provenance", formats["section"])
         row += 1
         for filename, digest in snapshot["hashes"].items():
             method.write(row, 0, filename, formats["text"])
-            method.merge_range(row, 1, row, 9, digest, formats["hash"])
+            method.merge_range(row, 1, row, 3, digest, formats["hash"])
             method.set_row(row, 33)
             row += 1
-        method.merge_range(row + 1, 0, row + 1, 9, "Policy raw response hashes, source URLs and UTC retrieval times are recorded in policy_rates_metadata.json; its hash above pins that provenance. Common-window and robustness metadata record preserved-artifact hashes and exact scenario windows.", formats["note"])
-        method.set_row(row + 1, 40)
+        method.merge_range(row + 1, 0, row + 1, 3, "Policy raw response hashes, source URLs and UTC retrieval times are recorded in policy_rates_metadata.json; its hash above pins that provenance. Common-window and robustness metadata record preserved-artifact hashes and exact scenario windows.", formats["note"])
+        method.set_row(row + 1, 65)
         dashboard.activate()
         dashboard.set_first_sheet()
     return output

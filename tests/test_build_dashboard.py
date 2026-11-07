@@ -138,6 +138,12 @@ class WorkbookTests(unittest.TestCase):
         last = PERFORMANCE_START + len(curves)
         for number, field in ((1, "equity"), (2, "drawdown")):
             chart = ET.fromstring(self.zip.read(f"xl/charts/chart{number}.xml"))
+            axis = chart.find(".//c:dateAx", NS)
+            self.assertIsNotNone(axis)  # Dates must not become dense text categories.
+            self.assertEqual(axis.find("c:numFmt", NS).get("formatCode"), "yyyy")
+            self.assertEqual(axis.find("c:numFmt", NS).get("sourceLinked"), "0")
+            self.assertEqual(axis.find("c:majorUnit", NS).get("val"), "1")
+            self.assertEqual(axis.find("c:majorTimeUnit", NS).get("val"), "years")
             series = chart.findall(".//c:ser", NS)
             self.assertEqual(len(series), 4)
             for j, (item, name) in enumerate(zip(series, PORTFOLIOS)):
@@ -152,12 +158,19 @@ class WorkbookTests(unittest.TestCase):
 
     def test_signal_summaries_provenance_and_scenario_tables(self):
         curves = self.snapshot["curves"]
+        styles = ET.fromstring(self.zip.read("xl/styles.xml"))
+        number_formats = {node.get("numFmtId"): node.get("formatCode")
+                          for node in styles.findall("s:numFmts/s:numFmt", NS)}
+        cell_formats = styles.findall("s:cellXfs/s:xf", NS)
         for j, name in enumerate(("baseline", "macro")):
             for k, held in enumerate((-1, 0, 1)):
                 mask = curves[f"{name}_position"].iloc[1:].eq(held)
                 row = 7+j*3+k
                 self.assertEqual(self.cell(2, f"C{row}")[1], mask.sum())
-                mean = self.cell(2, f"D{row}")[1]
+                mean_cell, mean = self.cell(2, f"D{row}")
+                number_format = number_formats[cell_formats[int(mean_cell.get("s"))].get("numFmtId")]
+                # Precision is part of interpreting small cost-bearing conditional means.
+                self.assertEqual(number_format, '0.0000%;[Red](0.0000%);0.0000%')
                 if mask.any():
                     self.assertAlmostEqual(mean, curves[f"{name}_net_return"].iloc[1:][mask].mean())
                 else:

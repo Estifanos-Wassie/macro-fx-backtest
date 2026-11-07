@@ -522,5 +522,12 @@ or external links. Excel and LibreOffice are not installed in the build
 environment, so **native visual rendering remains unverified**; structural and
 numerical checks do not substitute for that inspection.
 
+Presentation refinements based on the user's initial Numbers screenshot review
+use annual, year-only chart ticks, concise legends, four-decimal percentage
+formats for conditional mean interval returns, and narrower wrapped Methodology
+text. Flat-position intervals can include exit costs. Detailed tables retain
+their readable text and horizontal scrolling. The revised Numbers appearance
+and native Excel rendering remain unverified until inspected in those apps.
+
 ## Tools
 Python, pandas, NumPy, Matplotlib, Requests, and XlsxWriter.
