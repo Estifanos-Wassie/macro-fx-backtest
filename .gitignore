@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+.env.*
+!.env.example
+
+# Downloaded data and generated pipeline outputs
+data/raw/
+data/processed/

@@ -1,0 +1,3 @@
+Use the user's existing configured Git identity for both author and committer. Do not change the user's Git name or email. Do not add Codex or other AI-agent authorship, AI Co-authored-by trailers, or generated-by attribution to commit messages. Leave existing commit history unchanged.
+
+Prefer small, focused commits. Commit each independently useful, verified change as it is completed, with an accurate message. Review the staged changes before each commit and exclude generated data and credentials. Do not create empty commits, artificial edits, or repeated changes to increase the commit count. Do not backdate commits or rewrite history to increase the count. Push normally when the requested task is complete and pushing is authorized.
