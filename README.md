@@ -5,7 +5,8 @@ daily foreign exchange data, with an Excel performance dashboard.
 
 ## Status
 Completed data download, inspection, cleaning, return calculation, baseline
-signal generation, a transparent baseline backtest, and performance evaluation.
+signal generation, a transparent baseline backtest, performance evaluation,
+and aligned benchmark comparisons.
 The dataset contains
 2,816 ECB daily EUR/USD reference
 observations (USD per EUR), from 2015-01-02 through 2025-12-31, with 2,815
@@ -35,6 +36,7 @@ From the project root, using the existing virtual environment:
 .venv/bin/python src/generate_signals.py
 .venv/bin/python src/backtest.py
 .venv/bin/python src/evaluate_performance.py
+.venv/bin/python src/compare_benchmarks.py
 ```
 
 The download step writes `data/raw/eurusd_ecb.csv`; skip it to preserve the
@@ -140,6 +142,59 @@ not a claim of exactly 252 observations in each calendar year. CAGR instead
 uses actual elapsed calendar time. The execution, illustrative costs, and
 limitations of the baseline model above remain unchanged; no strategy
 parameters were tuned during evaluation.
+
+## Benchmark comparison
+
+`src/compare_benchmarks.py` exposes `validate_baseline`, `build_benchmarks`, and
+`compare_benchmarks`, plus the runnable pipeline command above. It reads the
+saved baseline backtest and writes three ignored outputs in `data/processed/`:
+
+- `benchmark_comparison.csv`: one metric row per portfolio; fractional units,
+  with a blank field for undefined Sharpe.
+- `benchmark_curves.csv`: aligned dates and each portfolio's net returns,
+  equity, drawdown, held positions, gross returns, turnover, and separate costs.
+- `benchmark_metadata.json`: dates, capital, cost rate, metric definitions,
+  benchmark definitions, entry timing, turnover, costs, and metrics; undefined
+  metrics use JSON `null`.
+
+The baseline uses its saved net returns and equity unchanged, after reconciling
+them to the existing model. The long-EUR benchmark stays flat until the same
+first held-position return row, then holds +1 through the final interval.
+This is **constant long EUR exposure under the daily equity-relative exposure
+model**, not a literal fixed-quantity currency holding. It reuses the backtest
+engine with synthetic instructions placed two rows before the desired holdings;
+the engine applies the execution lag once. Resulting positions and costs are
+checked explicitly. If the baseline never takes exposure, the comparison fails
+clearly because no shared active start exists.
+
+The long benchmark enters at the **2015-03-27** observation and first earns the
+return ending **2015-03-30**, matching the baseline's first nonzero position.
+Entry costs 0.0001 of equity (1 bp), recorded on that first return row. It has
+no intermediate turnover and liquidates on **2025-12-31**, with a separate
+0.0001 closing cost on the final row: **2 turnover units including liquidation**.
+The flat portfolio has zero positions, returns, costs, and drawdown; equity
+remains $10,000. It is a **zero-interest reference**, not historical cash
+investment performance. Its Sharpe is undefined, rather than zero.
+
+All three portfolios share the 2015-01-02 initial valuation, $10,000 capital,
+2025-12-31 final observation, and 2,815 evaluated return intervals. Genuine flat
+warmup returns remain included and the initial valuation is excluded from return
+statistics. Metrics reuse the evaluator's sample standard deviation, sqrt(252)
+annualization, zero reference rate, actual-calendar-day CAGR, and running peaks
+that include initial capital.
+
+| Portfolio | Total return | CAGR | Annualized volatility | Zero-reference-rate Sharpe | Maximum drawdown (loss magnitude) |
+|---|---:|---:|---:|---:|---:|
+| Moving-average baseline | -5.72% | -0.53% | 7.72% | -0.030 | 21.62% |
+| Constant long EUR exposure | 8.21% | 0.72% | 7.72% | 0.130 | 23.44% |
+| Flat zero-interest reference | 0.00% | 0.00% | 0.00% | Undefined | 0.00% |
+
+These remain retrospective full-period diagnostics, not out-of-sample results.
+The shared active start is chosen retrospectively from the baseline. No strategy
+parameters are tuned. All portfolios use the same reference observations and
+daily exposure conventions; financing/carry, cash interest, and daily resizing
+costs remain excluded. ECB reference rates are assumed execution proxies,
+not guaranteed fills, so this is not fully tradable FX performance.
 
 ## Planned Features
 - Extend the baseline trading signal with a macroeconomic input.
