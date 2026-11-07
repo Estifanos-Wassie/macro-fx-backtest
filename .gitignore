@@ -9,3 +9,4 @@ __pycache__/
 # Downloaded data and generated pipeline outputs
 data/raw/
 data/processed/
+reports/*.xlsx
