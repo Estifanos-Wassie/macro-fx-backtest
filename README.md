@@ -7,7 +7,7 @@ daily foreign exchange data, with an Excel performance dashboard.
 Completed data download, inspection, cleaning, return calculation, baseline
 signal generation, a transparent baseline backtest, performance evaluation,
 aligned benchmark comparisons, policy-rate data preparation, and a standalone
-macro signal (without macro performance evaluation).
+macro signal, and a four-portfolio common-window comparison.
 The dataset contains
 2,816 ECB daily EUR/USD reference
 observations (USD per EUR), from 2015-01-02 through 2025-12-31, with 2,815
@@ -327,13 +327,99 @@ This output is a **signal, not a held position**. It uses only the already
 backward-aligned values with their modeled availability lag intact. The signal
 on FX row t is formed after observation t. This script applies no execution
 delay; a later backtest will apply the existing two-observation delay once,
-executing at t+1 and first earning the return ending at t+2. Macro performance
-has not been evaluated. Current-vintage policy history, assumed publication
+executing at t+1 and first earning the return ending at t+2. The separate
+common-window comparison below now evaluates that fixed signal. Current-vintage policy history, assumed publication
 availability, and revision risk remain limitations. This is retrospective
 research, not out-of-sample research or evidence of tradable profitability.
 
+## Common-window comparison
+
+Run the comparison and its tests using the existing generated signal files:
+
+```sh
+.venv/bin/python src/compare_common_window.py
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+`compare_common_window.py` validates the saved SMA and macro signal definitions,
+derives eligibility, builds the four portfolios, and reuses the existing
+evaluator for every metric. The backtest now exposes `run_position_backtest`
+for already-lagged held positions; `run_backtest` delegates to it after applying
+the existing lag. Full-history baseline behavior remains unchanged.
+
+Eligibility depends on required history, **not the first nonzero signal**:
+the 20/60-observation SMA baseline is eligible at index 59, and the fixed
+63-observation macro difference at index 63. Both must have contiguous valid
+indicators thereafter. The common eligible signal index is therefore 63.
+Applying the two-observation execution delay gives the first evaluated return
+at **index 65 (2015-04-07)**, with its initial valuation/execution boundary at
+**index 64 (2015-04-02)**. These boundaries are derived and checked against the
+fixed history and timing assumptions; inconsistent inputs cause failure.
+
+Strategy positions are calculated as `signal.shift(2)` on full history before
+selecting the window. The macro policy-data availability lag is already
+embedded and is preserved. No second execution delay is applied. Each
+portfolio starts from cash with **$10,000** at the initial valuation, which has
+zero portfolio return, position, and cost. Its preceding FX interval is outside
+this simulation. On the first evaluated return row, turnover is measured from
+cash, even if the full-history strategy previously held the same position.
+Eligible macro zero signals remain genuine flat periods in the comparison;
+the start is not moved forward until the macro strategy trades.
+
+Constant long EUR exposure begins at the same execution boundary and earns the
+first evaluated return. It follows the daily equity-relative exposure model,
+not a fixed-quantity currency holding. The flat reference remains at $10,000,
+with zero returns and undefined Sharpe. All four portfolios pay the same
+illustrative 1-bp one-way turnover cost and separate final-liquidation cost
+when applicable. Initial equity, dates, metric definitions, and statistical
+observation counts are identical.
+
+The window ends **2025-12-31**, with **2,751 evaluated returns** and 2,752
+valuation rows. Annualization and units follow the evaluator above: net returns,
+sample standard deviation, sqrt(252) convention, zero-reference-rate Sharpe,
+actual-calendar-day CAGR, and initial-capital-aware drawdown.
+
+| Portfolio | Total return | CAGR | Annualized volatility | Zero-reference-rate Sharpe | Maximum drawdown (loss magnitude) |
+|---|---:|---:|---:|---:|---:|
+| Moving-average baseline | -5.94% | -0.57% | 7.80% | -0.033 | 21.62% |
+| Policy differential change | -24.14% | -2.54% | 5.75% | -0.411 | 27.17% |
+| Constant long EUR exposure | 8.47% | 0.76% | 7.80% | 0.134 | 23.44% |
+| Flat zero-interest reference | 0.00% | 0.00% | 0.00% | Undefined | 0.00% |
+
+Common-window baseline metrics can differ from the earlier full-period
+metrics because earlier returns are excluded, the capital and running peak
+reset to $10,000, a new entry from cash is charged, and the elapsed-time and
+return-statistics samples change. These are new simulations rather than slices
+of previously accumulated equity. Earlier results remain preserved.
+
+The macro strategy has nonzero exposure on **1,549 / 2,751 = 56.31%** of
+evaluated return intervals. Exposure fraction counts nonzero held-position rows
+over all evaluated return rows, including eligible flats in the denominator.
+Its **49 position changes** count return rows where exposure differs from the
+preceding row, starting from cash; the separate terminal close is excluded.
+Normal turnover sums absolute position changes: **53 units**, with a reversal
+counting as two. Final liquidation adds one unit for **54 total units**.
+
+New ignored outputs under `data/processed/` are:
+
+- `common_window_comparison.csv`: one metric row per portfolio.
+- `common_window_curves.csv`: aligned dates, FX returns, full-history row
+  indices, portfolio net returns, equity, drawdowns, positions, turnover, costs,
+  and originating strategy-signal dates.
+- `common_window_metadata.json`: eligibility and boundary indices, dates,
+  return count, initial capital, execution lag, costs, signal/metric definitions,
+  exposure diagnostics, limitations, and before/after-verified hashes of the
+  pre-existing data artifacts. Undefined metrics are JSON null and CSV blanks.
+
+These are **retrospective common-window diagnostics**, not a holdout or
+out-of-sample evaluation. No parameters were tuned and no winning rule is
+selected. The macro signal is not carry income. Financing/carry, cash interest,
+and daily resizing costs remain excluded; ECB reference rates are assumed
+execution proxies rather than guaranteed fills. Current-vintage policy data,
+modeled availability, and revision risk remain limitations. These results do
+not establish fully tradable FX performance.
+
 ## Planned Features
-- Backtest the standalone macro signal using the existing execution and cost model.
 - Create an Excel dashboard showing equity, drawdown, and signal performance.
 
 ## Tools
