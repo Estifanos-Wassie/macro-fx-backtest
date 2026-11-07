@@ -8,6 +8,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ONE_WAY_COST = 0.0001  # Illustrative 1 bp per unit; not a broker quote.
 INITIAL_EQUITY = 10_000.0
+EXECUTION_LAG = 2
 
 
 def validate_input(data: pd.DataFrame) -> pd.DataFrame:
@@ -76,26 +77,31 @@ def calculate_positions(signals: pd.Series) -> pd.Series:
     The last two signals cannot earn an observed return and are unused.
     The final row's position describes its earning interval, before liquidation.
     """
-    return signals.shift(2, fill_value=0).astype(int)
+    return signals.shift(EXECUTION_LAG, fill_value=0).astype(int)
 
 
-def run_backtest(
+def run_position_backtest(
     data: pd.DataFrame,
+    positions: pd.Series,
     one_way_cost: float = ONE_WAY_COST,
     initial_equity: float = INITIAL_EQUITY,
 ) -> pd.DataFrame:
-    """Preserve input fields and add positions, costs, returns, and equity.
+    """Simulate supplied held positions without applying any signal delay.
 
-    Costs are return fractions. Normal turnover is booked on the row of the
-    interval starting with the position change. Final liquidation is separate.
-    Excludes financing/carry, cash interest, and daily exposure resizing costs.
+    The initial row is a cash valuation with no return interval. Inputs still
+    require validated dates, rates and returns. Callers compute held positions
+    with full-history context before selecting a window. Costs are return
+    fractions; terminal liquidation is separate from normal turnover.
     """
     if not np.isfinite(one_way_cost) or one_way_cost < 0:
         raise ValueError("One-way cost must be finite and nonnegative.")
     if not np.isfinite(initial_equity) or initial_equity <= 0:
         raise ValueError("Initial equity must be finite and positive.")
     result = validate_input(data)
-    result["position"] = calculate_positions(result["signal"])
+    positions = pd.Series(positions).reset_index(drop=True)
+    if len(positions) != len(result) or not positions.isin([-1, 0, 1]).all():
+        raise ValueError("Held positions must match input length and belong to {-1, 0, 1}.")
+    result["position"] = positions.astype(int)
     if result["position"].iloc[0] != 0:
         raise ValueError("Initial position must be zero before filling the initial return.")
     # Validation has established that this is the only missing return.
@@ -115,6 +121,22 @@ def run_backtest(
     if not np.isfinite(result["equity"]).all():
         raise ValueError("Compounded equity is nonfinite.")
     return result
+
+
+def run_backtest(
+    data: pd.DataFrame,
+    one_way_cost: float = ONE_WAY_COST,
+    initial_equity: float = INITIAL_EQUITY,
+) -> pd.DataFrame:
+    """Apply the execution lag once, then reuse the held-position engine.
+
+    Excludes financing/carry, cash interest, and daily exposure resizing costs.
+    Existing full-history behavior and costs are unchanged.
+    """
+    validated = validate_input(data)
+    return run_position_backtest(
+        validated, calculate_positions(validated["signal"]), one_way_cost, initial_equity
+    )
 
 
 def main() -> None:
