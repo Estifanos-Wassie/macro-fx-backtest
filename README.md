@@ -23,12 +23,61 @@ average is unavailable. The first 59 signals are therefore zero.
 A signal using an observation becomes available only after that observation;
 it cannot earn the return that preceded it (the same row's `fx_return`).
 The baseline backtest now models delayed positions and illustrative transaction
-costs. Full-period performance diagnostics are implemented; the macroeconomic
-signal and the dashboard remain future work.
+costs. Full-period diagnostics, the macroeconomic signal, common-window
+comparison, robustness analysis, and dashboard are implemented below.
 
 ## Run the pipeline
 
-From the project root, using the existing virtual environment:
+Tested with **Python 3.14.3** on macOS (Apple silicon). From a fresh checkout:
+
+```sh
+git clone https://github.com/Estifanos-Wassie/macro-fx-backtest.git
+cd macro-fx-backtest
+python3.14 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python run_pipeline.py --download
+```
+
+The last command runs every stage through `reports/macro_fx_dashboard.xlsx`.
+The runner uses the running Python interpreter, creates output directories,
+prints stage names, and stops on the first error. Download mode requests real
+ECB and FRED data and records provenance. Existing raw snapshots cause refusal
+unless refresh is explicit:
+
+```sh
+.venv/bin/python run_pipeline.py --download --refresh
+```
+
+Refresh retains prior ECB bytes/metadata in timestamped archives and downloads
+FRED into new timestamped directories; it does not discard previous snapshots.
+Derived reports are regenerated. Use a separate checkout to compare vintages
+without replacing established processed results.
+
+For offline reproduction, **first obtain the ignored raw snapshots** from an
+existing run or a trusted fixed-snapshot copy. They are not included in Git.
+Copy the entire raw directory, including FRED manifests and CSVs:
+
+```sh
+mkdir -p data
+cp -R /path/to/snapshot/data/raw data/
+.venv/bin/python run_pipeline.py --offline
+```
+
+Offline mode never invokes a downloader or requests network access. It verifies
+the policy raw hashes and keeps raw inputs unchanged. The latest policy
+download attempt must be complete; select a specific archive when necessary:
+
+```sh
+.venv/bin/python run_pipeline.py --offline --policy-manifest "data/raw/policy_rates/ARCHIVE_ID/metadata.json"
+```
+
+`ARCHIVE_ID` is a placeholder: substitute an existing archive directory.
+Environment installation may require network access; offline mode refers to
+the research pipeline after dependencies and raw snapshots are available.
+See [reproduction verification and output inventory](docs/reproducibility.md).
+
+For individual FX and baseline stages, from the project root:
 
 ```sh
 .venv/bin/python src/download_data.py
@@ -41,7 +90,8 @@ From the project root, using the existing virtual environment:
 .venv/bin/python src/compare_benchmarks.py
 ```
 
-The download step writes `data/raw/eurusd_ecb.csv`; skip it to preserve the
+The download step refuses to replace `data/raw/eurusd_ecb.csv` unless given
+`--refresh`, and archives response bytes and provenance. Skip it to reuse the
 existing raw download. Signal generation reads `data/processed/eurusd_returns.csv`
 and writes `data/processed/baseline_signals.csv`, preserving the input columns
 and adding `sma_20`, `sma_60`, and `signal`. Scripts resolve data paths relative
@@ -521,6 +571,14 @@ summaries, scenario tables, annual returns, provenance, and absence of macros
 or external links. Excel and LibreOffice are not installed in the build
 environment, so **native visual rendering remains unverified**; structural and
 numerical checks do not substitute for that inspection.
+
+The user reports that the previously uploaded dashboard was independently
+checked and rendered in LibreOffice; native Excel was not tested. That claim
+applies to the uploaded version, not the newly revised print layout. The current
+layout specifies two A3 landscape pages at 85% scale, with a manual break
+before the second chart. Saved settings and chart anchors are checked so each
+chart stays on its own page; **the revised printed appearance still needs
+renderer verification**. On-screen layout, formulas and series are preserved.
 
 Presentation refinements based on the user's initial Numbers screenshot review
 use annual, year-only chart ticks, concise legends, four-decimal percentage
